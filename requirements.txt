@@ -1,0 +1,6 @@
+fastmcp
+requests
+requests-negotiate-sspi
+truststore
+python-dotenv
+xmltodict
