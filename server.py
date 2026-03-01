@@ -8,6 +8,12 @@ from requests_negotiate_sspi import HttpNegotiateAuth
 import truststore
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from typing import Optional
+from lightweight_rag_engine import LightweightRAGEngine, load_text, normalize_whitespace, format_abap_artifacts_to_text
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 truststore.inject_into_ssl()
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
@@ -254,5 +260,57 @@ def SearchObject(query: str, max_results: int = 100) -> str:
         return _error(e, "Search", query)
 
 
+@mcp.tool()
+def GetContext() -> str:
+    try:
+        context_path = Path(__file__).parent / "context.txt"
+        return context_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return json.dumps({"error": "context.txt not found in the server directory."})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+@mcp.tool()
+def GetReusableAbapArtifacts(
+    question: Optional[str] = None,
+):
+    try:
+        # Use larger chunk size to keep full artifact definitions together
+        rag_engine = LightweightRAGEngine(chunk_size=2000, overlap=100)
+        url_class = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_Class"
+        # url_fm = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_FM"
+        truststore.inject_into_ssl()
+        session = requests.Session()
+        session.auth = HttpNegotiateAuth()
+        response = session.get(url_class, timeout=15)
+        response.raise_for_status()
+        
+        # Get JSON response
+        json_data = response.json()
+        logger.info(f"Received response with keys: {list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}")
+        
+        # Convert to text format
+        data_text = format_abap_artifacts_to_text(json_data)
+        if data_text == "No data available":
+            return {"error": "No artifacts found in response"}
+        
+        # Ensure we have a string
+        if not isinstance(data_text, str):
+            logger.error(f"data_text is not a string, got: {type(data_text)}")
+            return {"error": f"Format function returned {type(data_text)} instead of string"}
+        
+        logger.info(f"Text data length: {len(data_text)} characters")
+        
+        # Build index and retrieve
+        rag_engine.build_index(data_text)
+        prompt = rag_engine.generate_rag_prompt(question, top_k=8)
+        logger.info(prompt)
+        return {"response": prompt}
+
+    except Exception as e:
+        logger.error(f"Error in shell_abap_artifacts: {str(e)}")
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http", host="127.0.0.1", port=8080)
+    # mcp.run()
