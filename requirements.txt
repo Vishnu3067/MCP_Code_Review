@@ -4,3 +4,6 @@ requests-negotiate-sspi
 truststore
 python-dotenv
 xmltodict
+numpy
+scikit-learn
+llama-index-core

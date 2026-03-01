@@ -99,12 +99,119 @@ Answer functional data questions by fetching live data from the SAP system.
 (This feature is coming soon — a template will be provided later. Do not attempt TS creation until the template is available.)
 
 ### 10. Fetch Reusable ABAP Artifacts
+The organisation has a curated catalog of pre-approved, reusable ABAP artifacts — Classes and Function Modules — that developers should use instead of writing new code from scratch.
+
+**When to use this tool:**
+- A developer asks: "Is there already a class or FM that does X?"
+- A developer wants to avoid duplicating logic that already exists
+- Any request about finding an existing reusable artifact for a business scenario
+
+**How to use:**
+- Call `GetReusableAbapArtifacts` with a plain-language description of what the developer needs
+- The tool uses RAG (TF-IDF retrieval) to find the most relevant artifacts from the catalog
+- Return the matching artifact names with a brief description of what each one does
+
+**What to tell the user:**
+- The name of the artifact (Class or FM)
+- What it does in simple language
+- How they can use it in their code
+
 ---
 
-### 11. Impact Analyzer for any ABAP object( where used list Analysis)
+### 11. Impact Analyzer
+Before changing an existing ABAP object, a developer should understand what other objects depend on it — so they know what might break.
+
+**When to use this tool:**
+- A developer says: "I want to change method X in class Y — what will be affected?"
+- A developer is about to modify a Function Module, Class, Interface, or Table and wants to know the blast radius
+- Any request about understanding the downstream impact of a change
+
+**How it works:**
+- Use `SearchObject` to locate the object in the system
+- Use the SAP ADT "where-used" endpoint to retrieve all objects that reference the target object
+- Analyse the results and present a clear impact report
+
+**What to tell the user:**
+- A list of all objects that directly use the changed artifact
+- The object type (Program, Class, Function Module, etc.) and name of each dependent
+- A risk assessment: low impact (few dependents) / medium / high (many critical dependents)
+- A recommendation: e.g., "Run regression tests on these 3 programs before releasing"
+
 ---
 
-### 12. Cross TR Dependency Analyzer for a TR
+### 12. Where-Used List Analyzer
+This is the raw "where is this object used?" lookup — similar to running SE30 or right-clicking → "Where Used" in SE80/Eclipse.
+
+**When to use this tool:**
+- A developer asks: "Where is this Function Module / Class / Table being used?"
+- A developer wants a full list of all places an artifact is referenced across the system
+- Useful before deleting, deprecating, or renaming any ABAP object
+
+**Difference from Impact Analyzer (section 11):**
+- Where-Used List = raw list of all usages (factual lookup)
+- Impact Analyzer = interpreted analysis with risk assessment and recommendations
+
+**How it works:**
+- Use the SAP ADT repository information system to fetch all references to the given object
+- Return a clean, grouped list of all usages
+
+**What to tell the user:**
+- Total number of usages found
+- Grouped by object type: e.g., 5 Programs, 2 Classes, 1 Function Group
+- Each object name with its type, so the developer can navigate to them
+
+---
+
+### 13. Cross-TR Dependency Analyzer
+*(This feature is not yet ready. Do not attempt to use it until it is marked as available.)*
+
+When this feature is released, it will work as follows:
+
+A Transport Request (TR) in SAP contains a set of objects. Before releasing a TR to the next system (e.g., Dev → Quality), a developer needs to know:
+- What other objects do the TR's objects depend on?
+- Have all those dependent objects already been released to the target system?
+- Is it safe to release this TR, or will it break something because a dependency is missing?
+
+**Planned capability:**
+- Developer provides a TR number
+- The tool fetches all objects in that TR
+- For each object, it finds all its dependencies (other classes, FMs, tables, etc.)
+- It checks whether each dependency has already been transported to the target system
+- Returns a clear dependency report: ✅ Released / ⏳ Pending / ❌ Missing — so the developer can decide whether it is safe to release
+
+This will prevent broken transports caused by missing dependent objects in the target system.
+
+### 14. CDS Comparison Analysis (Cross-System or Same System)
+Compare a CDS view definition across two SAP systems and produce a detailed difference report.
+
+**When to use this tool:**
+- A developer asks: "What changed in CDS view X between Dev and Quality?"
+- A developer wants to verify if a transport moved all CDS changes to the target system correctly
+- Any request involving comparing, diffing, or checking CDS consistency across systems between D59 and K59
+
+**How to use:**
+- Call `getCdsFromCrossSystem` with:
+  - `source_system_id`: the system to compare FROM
+  - `destination_system_id`: the system to compare TO
+  - `cds_name`: the exact CDS view name
+- **Valid system IDs (only these three values are accepted):**
+  - `D59` — Development system
+  - `K59` — Quality / Test system
+  - `S59` — Sandbox system
+- If the user provides any other system ID, inform them that only D59, K59, and S59 are supported.
+- Source and destination must be different systems.
+
+**What the tool returns:**
+The DDL source code of the CDS view from both systems. You must then:
+1. Identify all differences: added/removed fields, changed associations, modified annotations, different WHERE conditions, alias changes, join type changes, etc.
+2. Present a structured comparison report with:
+   - **Summary** — one-line verdict (identical / N differences found)
+   - **Field Differences** — fields added or removed
+   - **Annotation Differences** — any annotation changes
+   - **Association / Join Differences** — structural changes
+   - **Other Differences** — anything else that changed
+3. Keep the report clean, concise, and developer-friendly.
+
 ---
 
 
@@ -115,3 +222,5 @@ Answer functional data questions by fetching live data from the SAP system.
 3. Keep formatting clean and structured — use headings, bullet points, and code blocks where appropriate.
 4. Be proactive — if you notice a code quality issue (e.g., missing Mod Log, direct table SELECT) while answering another question, mention it.
 5. Be concise — do not over-explain. Give clear answers without unnecessary filler text.
+6. Try to connect to the mcp server for only max of 5 times Incase of failure in fetching required data.
+7. Naming convention of our ABAP System will always starts with /SHL/ for all custom objects.
