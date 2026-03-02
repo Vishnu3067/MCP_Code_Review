@@ -69,6 +69,20 @@ Help developers find the right SAP standard artifacts for custom enhancements.
 - Explain what each enhancement option does and when to use it
 - Find a BAPI, BADI, Customer Exit, BTE, Standard Class, Standard OData for any usecase
 
+**Important — SAP Standard Objects Use German Descriptions:**
+Many SAP standard objects (BAPIs, Function Module Exits, BTEs, BADIs, Standard Classes, Standard OData services) have their descriptions and purposes stored **in German** inside the SAP system. This means keyword-based retrieval may fail or return irrelevant results when the user asks a question in English.
+
+**Retry strategy — always follow this two-step approach:**
+1. First, call the relevant tool (e.g., `getBapiOrStandardFmOrBTEOrFmExit`, `getBADI`, `getStandardClass`, `getStandardOdata`) with the user's original English question.
+2. If the result is empty, irrelevant, or clearly not matching the user's intent — **translate the question into German** and call the same tool again with the German version of the question.
+3. Combine and de-duplicate results from both calls if both return useful data.
+4. Always present the final answer to the user **in English**, regardless of the language used for retrieval.
+
+**Example:**
+- English query: `"create PDF from spool job"` → no good result
+- German retry: `"PDF aus Spooljob erstellen"` → finds `ADS_CREATE_PDF_SPOOLJOB`
+- Return the result in English to the user.
+
 ---
 
 ### 6. BAPI Parameter Assistant
@@ -254,4 +268,5 @@ The DDL source code of the CDS view from both systems. You must then:
 4. Be proactive — if you notice a code quality issue (e.g., missing Mod Log, direct table SELECT) while answering another question, mention it.
 5. Be concise — do not over-explain. Give clear answers without unnecessary filler text.
 6. Try to connect to the mcp server for only max of 5 times Incase of failure in fetching required data.
+7. **German fallback for SAP standard object searches:** SAP standard objects (BAPIs, BADIs, BTEs, FM Exits, Standard Classes, OData services) often have German descriptions in the system. If a keyword search tool (`getBapiOrStandardFmOrBTEOrFmExit`, `getBADI`, `getStandardClass`, `getStandardOdata`) returns empty or irrelevant results for an English question, automatically translate the question into German and retry the same tool. Always respond to the user in English.
 7. Naming convention of our ABAP System will always starts with /SHL/ for all custom objects.

@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 truststore.inject_into_ssl()
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-SAP_URL_K59 = os.environ["SAP_URL_K59"]
-SAP_URL_D59 = os.environ["SAP_URL_D59"]
-SAP_URL_S59 = os.environ["SAP_URL_S59"]
+SAP_URL_K59 = os.environ["SAP_URL_K59"].rstrip("/")
+SAP_URL_D59 = os.environ["SAP_URL_D59"].rstrip("/")
+SAP_URL_S59 = os.environ["SAP_URL_S59"].rstrip("/")
+SAP_URL_A59 = os.environ["SAP_URL_A59"].rstrip("/")
 
 mcp = FastMCP("mcp-abap-adt-python")
 
@@ -61,7 +62,7 @@ def _error(e: Exception, object_type: str, object_name: str) -> str:
 def GetClass(class_name: str) -> str:
     try:
         encoded = quote(class_name, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/oo/classes/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/oo/classes/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Class", class_name)
@@ -73,7 +74,7 @@ def GetClass(class_name: str) -> str:
 def GetProgram(program_name: str) -> str:
     try:
         encoded = quote(program_name, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/programs/programs/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/programs/programs/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Program", program_name)
@@ -85,7 +86,7 @@ def GetProgram(program_name: str) -> str:
 def GetFunctionGroup(function_group: str) -> str:
     try:
         encoded = quote(function_group, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/functions/groups/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/functions/groups/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Function Group", function_group)
@@ -98,7 +99,7 @@ def GetFunction(function_name: str, function_group: str) -> str:
     try:
         encoded_name = quote(function_name, safe="")
         encoded_group = quote(function_group, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/functions/groups/{encoded_group}/fmodules/{encoded_name}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/functions/groups/{encoded_group}/fmodules/{encoded_name}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Function", function_name)
@@ -110,7 +111,7 @@ def GetFunction(function_name: str, function_group: str) -> str:
 def GetTable(table_name: str) -> str:
     try:
         encoded = quote(table_name, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/ddic/tables/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/ddic/tables/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Table", table_name)
@@ -122,7 +123,7 @@ def GetTable(table_name: str) -> str:
 def GetStructure(structure_name: str) -> str:
     try:
         encoded = quote(structure_name, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/ddic/structures/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/ddic/structures/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Structure", structure_name)
@@ -132,10 +133,26 @@ def GetStructure(structure_name: str) -> str:
 
 @mcp.tool()
 def GetTableContents(table_name: str, max_rows: int = 100) -> str:
+    """
+    Fetches table contents using the SAP ADT Data Preview freestyle SQL endpoint.
+    POST /sap/bc/adt/datapreview/freestyle
+    """
     try:
-        encoded = quote(table_name, safe="")
-        url = f"{SAP_URL_K59}/z_mcp_abap_adt/z_tablecontent/{encoded}"
-        response = get_session().get(url, params={"maxRows": max_rows}, timeout=30)
+        base_url = f"{SAP_URL_D59}/sap/bc/adt/datapreview/freestyle"
+        session = get_session()
+        csrf_token = fetch_csrf_token(session, base_url)
+        sql = f"SELECT * FROM {table_name} UP TO {max_rows} ROWS"
+        response = session.post(
+            base_url,
+            params={"rowNumber": max_rows, "sap-client": "110"},
+            headers={
+                "x-csrf-token": csrf_token,
+                "Content-Type": "text/plain",
+                "Accept": "application/xml, text/xml",
+            },
+            data=sql,
+            timeout=30,
+        )
         response.raise_for_status()
         return _check_content(response.text, "Table contents", table_name)
     except Exception as e:
@@ -145,7 +162,7 @@ def GetTableContents(table_name: str, max_rows: int = 100) -> str:
 @mcp.tool()
 def GetPackage(package_name: str) -> str:
     try:
-        url = f"{SAP_URL_K59}/sap/bc/adt/repository/nodestructure"
+        url = f"{SAP_URL_D59}/sap/bc/adt/repository/nodestructure"
         session = get_session()
         csrf_token = fetch_csrf_token(session, url)
         response = session.post(
@@ -192,7 +209,7 @@ def GetPackage(package_name: str) -> str:
 def GetInclude(include_name: str) -> str:
     try:
         encoded = quote(include_name, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/programs/includes/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/programs/includes/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Include", include_name)
@@ -205,13 +222,13 @@ def GetTypeInfo(type_name: str) -> str:
     encoded = quote(type_name, safe="")
     session = get_session()
     try:
-        url = f"{SAP_URL_K59}/sap/bc/adt/ddic/domains/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/ddic/domains/{encoded}/source/main"
         response = session.get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Domain", type_name)
     except requests.HTTPError:
         try:
-            url = f"{SAP_URL_K59}/sap/bc/adt/ddic/dataelements/{encoded}"
+            url = f"{SAP_URL_D59}/sap/bc/adt/ddic/dataelements/{encoded}"
             response = session.get(url, timeout=30)
             response.raise_for_status()
             return _check_content(response.text, "Data Element", type_name)
@@ -225,7 +242,7 @@ def GetTypeInfo(type_name: str) -> str:
 def GetInterface(interface_name: str) -> str:
     try:
         encoded = quote(interface_name, safe="")
-        url = f"{SAP_URL_K59}/sap/bc/adt/oo/interfaces/{encoded}/source/main"
+        url = f"{SAP_URL_D59}/sap/bc/adt/oo/interfaces/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Interface", interface_name)
@@ -238,7 +255,7 @@ def GetTransaction(transaction_name: str) -> str:
     try:
         encoded = quote(transaction_name, safe="")
         url = (
-            f"{SAP_URL_K59}/sap/bc/adt/repository/informationsystem/objectproperties/values"
+            f"{SAP_URL_D59}/sap/bc/adt/repository/informationsystem/objectproperties/values"
             f"?uri=%2Fsap%2Fbc%2Fadt%2Fvit%2Fwb%2Fobject_type%2Ftrant%2Fobject_name%2F{encoded}"
             f"&facet=package&facet=appl"
         )
@@ -254,7 +271,7 @@ def SearchObject(query: str, max_results: int = 100) -> str:
     try:
         encoded_query = quote(query, safe="")
         url = (
-            f"{SAP_URL_K59}/sap/bc/adt/repository/informationsystem/search"
+            f"{SAP_URL_D59}/sap/bc/adt/repository/informationsystem/search"
             f"?operation=quickSearch&query={encoded_query}&maxResults={max_results}"
         )
         response = get_session().get(url, timeout=30)
@@ -281,8 +298,8 @@ def GetReusableAbapArtifacts(
     try:
         # Use larger chunk size to keep full artifact definitions together
         rag_engine = LightweightRAGEngine(chunk_size=2000, overlap=100)
-        url_class = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_Class"
-        url_fm = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_FM"
+        url_class = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_Class?sap-client=110"
+        url_fm = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_FM?sap-client=110"
         truststore.inject_into_ssl()
         session = requests.Session()
         session.auth = HttpNegotiateAuth()
@@ -337,7 +354,7 @@ def getBapiOrStandardFmOrBTEOrFmExit(
     only the entries most relevant to the user's question.
     """
     try:
-        url_bapi = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Bapi"
+        url_bapi = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Bapi?sap-client=110"
         truststore.inject_into_ssl()
         session = requests.Session()
         session.auth = HttpNegotiateAuth()
@@ -388,7 +405,7 @@ def getStandardClass(
 ) -> dict:
  
     try:
-        url_standard_class = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Standard_Class"
+        url_standard_class = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Standard_Class?sap-client=110"
         truststore.inject_into_ssl()
         session = requests.Session()
         session.auth = HttpNegotiateAuth()
@@ -437,7 +454,7 @@ def getBADI(
     question: Optional[str]
 ) -> dict:
     try:
-        url_badi = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Badi"
+        url_badi = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Badi?sap-client=110"
         truststore.inject_into_ssl()
         session = requests.Session()
         session.auth = HttpNegotiateAuth()
@@ -488,7 +505,7 @@ def getStandardOdata(
     question: Optional[str]
 ) -> dict:
     try:
-        url_odata = "https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Odata"
+        url_odata = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Odata?sap-client=110"
         truststore.inject_into_ssl()
         session = requests.Session()
         session.auth = HttpNegotiateAuth()
@@ -537,6 +554,7 @@ _SYSTEM_URL_MAP = {
     "D59": SAP_URL_D59,
     "K59": SAP_URL_K59,
     "S59": SAP_URL_S59,
+    "A59": SAP_URL_A59,
 }
 
 
@@ -544,7 +562,7 @@ def _resolve_system_url(system_id: str) -> str:
     url = _SYSTEM_URL_MAP.get((system_id or "").upper())
     if not url:
         raise ValueError(
-            f"Unknown system ID '{system_id}'. Valid values are: D59, K59, S59."
+            f"Unknown system ID '{system_id}'. Valid values are: D59, K59, S59, A59."
         )
     return url
 
@@ -575,11 +593,11 @@ def getCdsFromCrossSystem(
         sap_source_url = _resolve_system_url(src_id)
         sap_destination_url = _resolve_system_url(dst_id)
 
-        session = get_session()
+        source_session = get_session()
+        destination_session = get_session()
 
-        # Fetch CDS source from both systems concurrently via sequential calls
         try:
-            source_code = _fetch_cds_source(session, sap_source_url, cds_name)
+            source_code = _fetch_cds_source(source_session, sap_source_url, cds_name)
         except requests.HTTPError as e:
             status = e.response.status_code if e.response is not None else "unknown"
             if status == 404:
@@ -587,7 +605,7 @@ def getCdsFromCrossSystem(
             return {"error": f"HTTP {status} while fetching CDS '{cds_name}' from {src_id}."}
 
         try:
-            destination_code = _fetch_cds_source(session, sap_destination_url, cds_name)
+            destination_code = _fetch_cds_source(destination_session, sap_destination_url, cds_name)
         except requests.HTTPError as e:
             status = e.response.status_code if e.response is not None else "unknown"
             if status == 404:
@@ -631,7 +649,9 @@ def getWhereUsedList(
     object_name: str,
     object_type: str
 ):
-    url_whereused = f"https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/WhereUsed(p_objtype='{object_type}',p_objname='{object_name}')/Set"
+    encoded_name = quote(object_name, safe="")
+    encoded_type = quote(object_type, safe="")
+    url_whereused = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/WhereUsed(p_objtype='{encoded_type}',p_objname='{encoded_name}')/Set?sap-client=110"
     truststore.inject_into_ssl()
     session = requests.Session()
     session.auth = HttpNegotiateAuth()
@@ -655,7 +675,7 @@ def getTrSeqAnalysis(
     tr_number: str,
     destination_sysid: str
 ):
-    url_trdep = f"https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/TR_DEP(p_tr_number='{tr_number}',p_dest_sysid='{destination_sysid}')/Set"
+    url_trdep = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/TR_DEP(p_tr_number='{tr_number}',p_dest_sysid='{destination_sysid}')/Set"
     truststore.inject_into_ssl()
     session = requests.Session()
     session.auth = HttpNegotiateAuth()
