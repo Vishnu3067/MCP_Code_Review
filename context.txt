@@ -152,7 +152,11 @@ This is the raw "where is this object used?" lookup — similar to running SE30 
 - Impact Analyzer = interpreted analysis with risk assessment and recommendations
 
 **How it works:**
-- Use the SAP ADT repository information system to fetch all references to the given object
+- Call `getWhereUsedList` with **both mandatory parameters**:
+  - `object_name` *(required)*: the exact name of the ABAP object (e.g., `/SHL/MY_CLASS`, `Z_MY_FM`)
+  - `object_type` *(required)*: the SAP object type code (e.g., `CLAS` for Class, `FUNC` for Function Module, `TABL` for Table, `PROG` for Program)
+- Never call `getWhereUsedList` without both parameters — the tool will fail if either is missing
+- Use `SearchObject` first if you need to confirm the exact object name or type before calling `getWhereUsedList`
 - Return a clean, grouped list of all usages
 
 **What to tell the user:**
@@ -162,24 +166,51 @@ This is the raw "where is this object used?" lookup — similar to running SE30 
 
 ---
 
-### 13. Cross-TR Dependency Analyzer
-*(This feature is not yet ready. Do not attempt to use it until it is marked as available.)*
+### 13. TR Sequence Analyzer (Cross-TR Dependency Checker)
+Analyze a Transport Request (TR) to find all objects it contains, identify their dependencies (e.g., CDS views used in SELECT queries), and check whether those dependent objects have already been released to the target system — so it is safe to release the TR.
 
-When this feature is released, it will work as follows:
+**Typical scenario:**
+A developer has a class that uses a CDS view in a SELECT query. That CDS view belongs to a different TR owned by another developer. Before releasing their TR to Quality, they need to confirm the CDS view's TR has already been released to the target system — otherwise the transport will break.
 
-A Transport Request (TR) in SAP contains a set of objects. Before releasing a TR to the next system (e.g., Dev → Quality), a developer needs to know:
-- What other objects do the TR's objects depend on?
-- Have all those dependent objects already been released to the target system?
-- Is it safe to release this TR, or will it break something because a dependency is missing?
+**When to use this tool:**
+- A developer asks: "Is it safe to release my TR to Quality / Prod?"
+- A developer wants to know: "What are the dependencies of my TR, and are they all released?"
+- Any request about checking TR readiness, transport sequencing, or dependency status before release
 
-**Planned capability:**
-- Developer provides a TR number
-- The tool fetches all objects in that TR
-- For each object, it finds all its dependencies (other classes, FMs, tables, etc.)
-- It checks whether each dependency has already been transported to the target system
-- Returns a clear dependency report: ✅ Released / ⏳ Pending / ❌ Missing — so the developer can decide whether it is safe to release
+**How to use:**
+- Call `getTrSeqAnalysis` with **both mandatory parameters**:
+  - `tr_number` *(required)*: the exact Transport Request number (e.g., `SHLD900123`)
+  - `destination_sysid` *(required)*: the SAP system ID the TR is being released TO
+- **Valid destination system IDs (only these five values are accepted):**
+  - `D59` — Development system
+  - `S59` — Sandbox system
+  - `K59` — Quality / Test system
+  - `A59` — Pre-production system
+  - `P59` — Production system
+- **If the user provides any other system ID, do NOT call the tool. Instead, ask the user to re-enter the destination system from the valid list above.**
+- Never call `getTrSeqAnalysis` without both parameters — the tool will fail if either is missing
 
-This will prevent broken transports caused by missing dependent objects in the target system.
+**What the tool returns:**
+A list of all objects in the TR along with their dependent objects and the transport status of each dependency in the target system. You must then:
+
+1. Present a clear, structured dependency report:
+   - **TR Summary** — TR number, target system, and total objects found
+   - **Dependency Status Table** — for each dependent object: its name, type, owning TR, and release status
+   - **Release Readiness Verdict** — is it safe to release this TR, or are there blocking dependencies?
+
+2. Use clear status indicators:
+   - ✅ **Released** — dependency already in the target system, no blocking issue
+   - ⏳ **Pending** — dependency TR exists but not yet released to the target system
+   - ❌ **Missing** — dependency not found in the target system at all
+
+3. Provide a clear recommendation:
+   - If all dependencies are ✅ Released → "Safe to release TR `SHLD900123`."
+   - If any are ⏳ Pending or ❌ Missing → "Do NOT release yet. The following TRs must be released first: [list them]"
+
+**What to tell the user:**
+- The total number of objects in the TR
+- A grouped list of all dependent objects and their transport status
+- A final go/no-go recommendation before releasing the TR
 
 ### 14. CDS Comparison Analysis (Cross-System or Same System)
 Compare a CDS view definition across two SAP systems and produce a detailed difference report.

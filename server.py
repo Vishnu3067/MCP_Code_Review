@@ -626,6 +626,53 @@ def getCdsFromCrossSystem(
         logger.error(f"Error in getCdsFromCrossSystem: {str(e)}")
         return {"error": str(e)}
 
+@mcp.tool()
+def getWhereUsedList(
+    object_name: str,
+    object_type: str
+):
+    url_whereused = f"https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/WhereUsed(p_objtype='{object_type}',p_objname='{object_name}')/Set"
+    truststore.inject_into_ssl()
+    session = requests.Session()
+    session.auth = HttpNegotiateAuth()
+    response = session.get(url_whereused, timeout=15)
+    response.raise_for_status()
+
+    json_data = response.json()
+    logger.info(
+        f"Received Whereused response with keys: "
+        f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
+    )
+
+    data_text = format_abap_artifacts_to_text(json_data)
+    if data_text == "No data available":
+        return {"error": "No Whereused artifacts found in response"}
+
+    return {"response": data_text}
+
+@mcp.tool()
+def getTrSeqAnalysis(
+    tr_number: str,
+    destination_sysid: str
+):
+    url_trdep = f"https://sapds59.europe.shell.com:8559/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/TR_DEP(p_tr_number='{tr_number}',p_dest_sysid='{destination_sysid}')/Set"
+    truststore.inject_into_ssl()
+    session = requests.Session()
+    session.auth = HttpNegotiateAuth()
+    response = session.get(url_trdep, timeout=15)
+    response.raise_for_status()
+
+    json_data = response.json()
+    logger.info(
+        f"Received TR_DEP response with keys: "
+        f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
+    )
+
+    data_text = format_abap_artifacts_to_text(json_data)
+    if data_text == "No data available":
+        return {"error": "No TR_DEP artifacts found in response"}
+
+    return {"response": data_text}
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http", host="127.0.0.1", port=8080)
