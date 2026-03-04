@@ -24,6 +24,7 @@ SAP_URL_K59 = os.environ["SAP_URL_K59"].rstrip("/")
 SAP_URL_D59 = os.environ["SAP_URL_D59"].rstrip("/")
 SAP_URL_S59 = os.environ["SAP_URL_S59"].rstrip("/")
 SAP_URL_A59 = os.environ["SAP_URL_A59"].rstrip("/")
+SAP_URL_L59 = os.environ["SAP_URL_L59"].rstrip("/")
 
 mcp = FastMCP("mcp-abap-adt-python")
 
@@ -555,6 +556,7 @@ _SYSTEM_URL_MAP = {
     "K59": SAP_URL_K59,
     "S59": SAP_URL_S59,
     "A59": SAP_URL_A59,
+    "L59": SAP_URL_L59,
 }
 
 
@@ -574,6 +576,70 @@ def _fetch_cds_source(session: requests.Session, sap_url: str, cds_name: str) ->
     response = session.get(url, timeout=30)
     response.raise_for_status()
     return response.text
+
+
+def _fetch_class_source(session: requests.Session, sap_url: str, class_name: str) -> str:
+    """Fetch the source of an ABAP class from the given SAP system."""
+    encoded = quote(class_name, safe="")
+    url = f"{sap_url}/sap/bc/adt/oo/classes/{encoded}/source/main"
+    response = session.get(url, timeout=30)
+    response.raise_for_status()
+    return response.text
+
+
+def _fetch_function_source(session: requests.Session, sap_url: str, function_name: str, function_group: str) -> str:
+    """Fetch the source of a function module from the given SAP system."""
+    encoded_name = quote(function_name, safe="")
+    encoded_group = quote(function_group, safe="")
+    url = f"{sap_url}/sap/bc/adt/functions/groups/{encoded_group}/fmodules/{encoded_name}/source/main"
+    response = session.get(url, timeout=30)
+    response.raise_for_status()
+    return response.text
+
+
+def _fetch_report_source(session: requests.Session, sap_url: str, program_name: str) -> str:
+    """Fetch the source of an ABAP report/program from the given SAP system."""
+    encoded = quote(program_name, safe="")
+    url = f"{sap_url}/sap/bc/adt/programs/programs/{encoded}/source/main"
+    response = session.get(url, timeout=30)
+    response.raise_for_status()
+    return response.text
+
+
+def _build_cross_system_response(
+    object_type: str,
+    object_name: str,
+    src_id: str,
+    dst_id: str,
+    source_code: str,
+    destination_code: str,
+) -> dict:
+    """Build a standardised cross-system comparison response dict."""
+    source_empty = not source_code or not source_code.strip()
+    destination_empty = not destination_code or not destination_code.strip()
+
+    if source_empty and destination_empty:
+        return {"error": f"{object_type} '{object_name}' has no content in either system."}
+
+    logger.info(
+        f"{object_type} comparison: '{object_name}' fetched from {src_id} "
+        f"({len(source_code)} chars) and {dst_id} ({len(destination_code)} chars)"
+    )
+
+    return {
+        "object_type": object_type,
+        "object_name": object_name,
+        "source_system": src_id,
+        "destination_system": dst_id,
+        "source_code": source_code if not source_empty else "(no content)",
+        "destination_code": destination_code if not destination_empty else "(no content)",
+        "instruction": (
+            f"Compare the two {object_type} definitions above (source={src_id}, destination={dst_id}). "
+            "List every difference — added/removed methods or fields, changed logic, "
+            "different signatures, modified conditions, or any other structural change. "
+            "Present the comparison as a clear, structured report with a summary section at the top."
+        ),
+    }
 
 
 @mcp.tool()
@@ -643,6 +709,139 @@ def getCdsFromCrossSystem(
     except Exception as e:
         logger.error(f"Error in getCdsFromCrossSystem: {str(e)}")
         return {"error": str(e)}
+
+@mcp.tool()
+def getClassFromCrossSystem(
+    source_system_id: str,
+    destination_system_id: str,
+    class_name: str,
+) -> dict:
+    """Compare an ABAP class source between two SAP systems."""
+    try:
+        src_id = (source_system_id or "").upper()
+        dst_id = (destination_system_id or "").upper()
+
+        if src_id == dst_id:
+            return {"error": "Source and destination system IDs must be different."}
+
+        sap_source_url = _resolve_system_url(src_id)
+        sap_destination_url = _resolve_system_url(dst_id)
+        source_session = get_session()
+        destination_session = get_session()
+
+        try:
+            source_code = _fetch_class_source(source_session, sap_source_url, class_name)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                return {"error": f"Class '{class_name}' not found in system {src_id}."}
+            return {"error": f"HTTP {status} while fetching class '{class_name}' from {src_id}."}
+
+        try:
+            destination_code = _fetch_class_source(destination_session, sap_destination_url, class_name)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                return {"error": f"Class '{class_name}' not found in system {dst_id}."}
+            return {"error": f"HTTP {status} while fetching class '{class_name}' from {dst_id}."}
+
+        return _build_cross_system_response("Class", class_name, src_id, dst_id, source_code, destination_code)
+
+    except ValueError as ve:
+        return {"error": str(ve)}
+    except Exception as e:
+        logger.error(f"Error in getClassFromCrossSystem: {str(e)}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def getFunctionFromCrossSystem(
+    source_system_id: str,
+    destination_system_id: str,
+    function_name: str,
+    function_group: str,
+) -> dict:
+    """Compare a function module source between two SAP systems."""
+    try:
+        src_id = (source_system_id or "").upper()
+        dst_id = (destination_system_id or "").upper()
+
+        if src_id == dst_id:
+            return {"error": "Source and destination system IDs must be different."}
+
+        sap_source_url = _resolve_system_url(src_id)
+        sap_destination_url = _resolve_system_url(dst_id)
+        source_session = get_session()
+        destination_session = get_session()
+
+        try:
+            source_code = _fetch_function_source(source_session, sap_source_url, function_name, function_group)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                return {"error": f"Function module '{function_name}' not found in system {src_id}."}
+            return {"error": f"HTTP {status} while fetching function module '{function_name}' from {src_id}."}
+
+        try:
+            destination_code = _fetch_function_source(destination_session, sap_destination_url, function_name, function_group)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                return {"error": f"Function module '{function_name}' not found in system {dst_id}."}
+            return {"error": f"HTTP {status} while fetching function module '{function_name}' from {dst_id}."}
+
+        return _build_cross_system_response("Function Module", function_name, src_id, dst_id, source_code, destination_code)
+
+    except ValueError as ve:
+        return {"error": str(ve)}
+    except Exception as e:
+        logger.error(f"Error in getFunctionFromCrossSystem: {str(e)}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def getReportFromCrossSystem(
+    source_system_id: str,
+    destination_system_id: str,
+    program_name: str,
+) -> dict:
+    """Compare an ABAP report/program source between two SAP systems."""
+    try:
+        src_id = (source_system_id or "").upper()
+        dst_id = (destination_system_id or "").upper()
+
+        if src_id == dst_id:
+            return {"error": "Source and destination system IDs must be different."}
+
+        sap_source_url = _resolve_system_url(src_id)
+        sap_destination_url = _resolve_system_url(dst_id)
+        source_session = get_session()
+        destination_session = get_session()
+
+        try:
+            source_code = _fetch_report_source(source_session, sap_source_url, program_name)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                return {"error": f"Report/Program '{program_name}' not found in system {src_id}."}
+            return {"error": f"HTTP {status} while fetching report '{program_name}' from {src_id}."}
+
+        try:
+            destination_code = _fetch_report_source(destination_session, sap_destination_url, program_name)
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "unknown"
+            if status == 404:
+                return {"error": f"Report/Program '{program_name}' not found in system {dst_id}."}
+            return {"error": f"HTTP {status} while fetching report '{program_name}' from {dst_id}."}
+
+        return _build_cross_system_response("Report/Program", program_name, src_id, dst_id, source_code, destination_code)
+
+    except ValueError as ve:
+        return {"error": str(ve)}
+    except Exception as e:
+        logger.error(f"Error in getReportFromCrossSystem: {str(e)}")
+        return {"error": str(e)}
+
 
 @mcp.tool()
 def getWhereUsedList(
