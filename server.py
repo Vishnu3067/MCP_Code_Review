@@ -284,10 +284,10 @@ def SearchObject(query: str, max_results: int = 100) -> str:
 @mcp.tool()
 def GetContext() -> str:
     try:
-        context_path = Path(__file__).parent / "context.txt"
+        context_path = Path(__file__).parent / "context_v2.txt"
         return context_path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return json.dumps({"error": "context.txt not found in the server directory."})
+        return json.dumps({"error": "context_v2.txt not found in the server directory."})
     except Exception as e:
         return json.dumps({"error": str(e)})
 
