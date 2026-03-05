@@ -47,6 +47,22 @@ Review any ABAP artifact and check for:
 - Ensure the TS is accurate, complete, and professionally worded
 - Return the finalized TS in chat only — never attempt to save it to the system
 
+TECHNICAL SPEC FORMAT (minimum):
+    - Title, Version, Date, Author (placeholder)
+    - Overview & Purpose
+    - Scope (In/Out)
+    - Assumptions/Dependencies
+    - Functional Requirements (header, items, validations, authorizations)
+    - Process Flow (Create vs Display)
+    - Selection Screen (fields, types, defaults)
+    - Data Model (EKKO, EKPO, EKET, EKKN, LFA1, MARA/MARC/MARM, T001/T001W, T024/T024E, T161, TCURC)
+    - Interfaces/APIs (BAPI_PO_CREATE1, BAPI_TRANSACTION_COMMIT)
+    - Error Handling & Logging (RETURN, SLG1 object/subobject)
+    - ALV Layout (header list, item drilldown, totals/filters/export)
+    - Performance & Limits (max rows, optimized SELECT)
+    - Security & Authorizations (M_BEST_BSA, M_BEST_EKO, M_BEST_WRK)
+    - Test Scenarios & Acceptance Criteria
+    - Open Issues / Risks
 ---
 
 ### 3. Enhancement Assistant
