@@ -9,9 +9,8 @@ import truststore
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from typing import Optional
-from lightweight_rag_engine import LightweightRAGEngine, load_text, normalize_whitespace, format_abap_artifacts_to_text
-from llama_index.core import Document, Settings
-from llama_index.core.indices.keyword_table import KeywordTableIndex
+from lightweight_rag_engine import format_abap_artifacts_to_text
+from rag import retrieve_top_methods
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +62,7 @@ def _error(e: Exception, object_type: str, object_name: str) -> str:
 def GetClass(class_name: str) -> str:
     try:
         encoded = quote(class_name, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/oo/classes/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/oo/classes/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Class", class_name)
@@ -75,7 +74,7 @@ def GetClass(class_name: str) -> str:
 def GetProgram(program_name: str) -> str:
     try:
         encoded = quote(program_name, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/programs/programs/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/programs/programs/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Program", program_name)
@@ -87,7 +86,7 @@ def GetProgram(program_name: str) -> str:
 def GetFunctionGroup(function_group: str) -> str:
     try:
         encoded = quote(function_group, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/functions/groups/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/functions/groups/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Function Group", function_group)
@@ -100,7 +99,7 @@ def GetFunction(function_name: str, function_group: str) -> str:
     try:
         encoded_name = quote(function_name, safe="")
         encoded_group = quote(function_group, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/functions/groups/{encoded_group}/fmodules/{encoded_name}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/functions/groups/{encoded_group}/fmodules/{encoded_name}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Function", function_name)
@@ -112,7 +111,7 @@ def GetFunction(function_name: str, function_group: str) -> str:
 def GetTable(table_name: str) -> str:
     try:
         encoded = quote(table_name, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/ddic/tables/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/ddic/tables/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Table", table_name)
@@ -124,7 +123,7 @@ def GetTable(table_name: str) -> str:
 def GetStructure(structure_name: str) -> str:
     try:
         encoded = quote(structure_name, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/ddic/structures/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/ddic/structures/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Structure", structure_name)
@@ -139,7 +138,7 @@ def GetTableContents(table_name: str, max_rows: int = 100) -> str:
     POST /sap/bc/adt/datapreview/freestyle
     """
     try:
-        base_url = f"{SAP_URL_D59}/sap/bc/adt/datapreview/freestyle"
+        base_url = f"{SAP_URL_S59}/sap/bc/adt/datapreview/freestyle"
         session = get_session()
         csrf_token = fetch_csrf_token(session, base_url)
         sql = f"SELECT * FROM {table_name} UP TO {max_rows} ROWS"
@@ -163,7 +162,7 @@ def GetTableContents(table_name: str, max_rows: int = 100) -> str:
 @mcp.tool()
 def GetPackage(package_name: str) -> str:
     try:
-        url = f"{SAP_URL_D59}/sap/bc/adt/repository/nodestructure"
+        url = f"{SAP_URL_S59}/sap/bc/adt/repository/nodestructure"
         session = get_session()
         csrf_token = fetch_csrf_token(session, url)
         response = session.post(
@@ -210,7 +209,7 @@ def GetPackage(package_name: str) -> str:
 def GetInclude(include_name: str) -> str:
     try:
         encoded = quote(include_name, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/programs/includes/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/programs/includes/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Include", include_name)
@@ -223,13 +222,13 @@ def GetTypeInfo(type_name: str) -> str:
     encoded = quote(type_name, safe="")
     session = get_session()
     try:
-        url = f"{SAP_URL_D59}/sap/bc/adt/ddic/domains/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/ddic/domains/{encoded}/source/main"
         response = session.get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Domain", type_name)
     except requests.HTTPError:
         try:
-            url = f"{SAP_URL_D59}/sap/bc/adt/ddic/dataelements/{encoded}"
+            url = f"{SAP_URL_S59}/sap/bc/adt/ddic/dataelements/{encoded}"
             response = session.get(url, timeout=30)
             response.raise_for_status()
             return _check_content(response.text, "Data Element", type_name)
@@ -243,7 +242,7 @@ def GetTypeInfo(type_name: str) -> str:
 def GetInterface(interface_name: str) -> str:
     try:
         encoded = quote(interface_name, safe="")
-        url = f"{SAP_URL_D59}/sap/bc/adt/oo/interfaces/{encoded}/source/main"
+        url = f"{SAP_URL_S59}/sap/bc/adt/oo/interfaces/{encoded}/source/main"
         response = get_session().get(url, timeout=30)
         response.raise_for_status()
         return _check_content(response.text, "Interface", interface_name)
@@ -256,7 +255,7 @@ def GetTransaction(transaction_name: str) -> str:
     try:
         encoded = quote(transaction_name, safe="")
         url = (
-            f"{SAP_URL_D59}/sap/bc/adt/repository/informationsystem/objectproperties/values"
+            f"{SAP_URL_S59}/sap/bc/adt/repository/informationsystem/objectproperties/values"
             f"?uri=%2Fsap%2Fbc%2Fadt%2Fvit%2Fwb%2Fobject_type%2Ftrant%2Fobject_name%2F{encoded}"
             f"&facet=package&facet=appl"
         )
@@ -272,7 +271,7 @@ def SearchObject(query: str, max_results: int = 100) -> str:
     try:
         encoded_query = quote(query, safe="")
         url = (
-            f"{SAP_URL_D59}/sap/bc/adt/repository/informationsystem/search"
+            f"{SAP_URL_S59}/sap/bc/adt/repository/informationsystem/search"
             f"?operation=quickSearch&query={encoded_query}&maxResults={max_results}"
         )
         response = get_session().get(url, timeout=30)
@@ -285,10 +284,10 @@ def SearchObject(query: str, max_results: int = 100) -> str:
 @mcp.tool()
 def GetContext() -> str:
     try:
-        context_path = Path(__file__).parent / "context_v2.txt"
+        context_path = Path(__file__).parent / "context.txt"
         return context_path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return json.dumps({"error": "context_v2.txt not found in the server directory."})
+        return json.dumps({"error": "context.txt not found in the server directory."})
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -297,259 +296,272 @@ def GetReusableAbapArtifacts(
     question: Optional[str] = None,
 ):
     try:
-        # Use larger chunk size to keep full artifact definitions together
-        rag_engine = LightweightRAGEngine(chunk_size=2000, overlap=100)
-        url_class = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_Class?sap-client=110"
-        url_fm = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_FM?sap-client=110"
-        truststore.inject_into_ssl()
-        session = requests.Session()
-        session.auth = HttpNegotiateAuth()
-        response = session.get(url_class, timeout=15)
-        response.raise_for_status()
-        
-        # Get JSON response
-        json_data = response.json()
+        session = get_session()
 
-        response2 = session.get(url_fm, timeout=15)
-        response2.raise_for_status()
-        json_data_fm = response2.json()
+        url_class = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_Class?sap-client=100"
+        url_fm    = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Artifacts_FM?sap-client=100"
 
-        logger.info(f"Received response with keys: {list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}")
-        logger.info(f"Received FM response with keys: {list(json_data_fm.keys()) if isinstance(json_data_fm, dict) else 'List response'}")
-        
-        # Convert to text format
-        data_text = format_abap_artifacts_to_text(json_data)
-        if data_text == "No data available":
-            return {"error": "No artifacts found in response"}
-        
-        data_text_fm = format_abap_artifacts_to_text(json_data_fm)
-        if data_text_fm == "No data available":
-            return {"error": "No FM artifacts found in response"}
-        
-        data_text = data_text + " " + data_text_fm
-        
-        # Ensure we have a string
-        if not isinstance(data_text, str):
-            logger.error(f"data_text is not a string, got: {type(data_text)}")
-            return {"error": f"Format function returned {type(data_text)} instead of string"}
-        
-        logger.info(f"Text data length: {len(data_text)} characters")
-        
-        # Build index and retrieve
-        rag_engine.build_index(data_text)
-        prompt = rag_engine.generate_rag_prompt(question, top_k=8)
-        logger.info(prompt)
+        # S59 uses client 100 — override the default header (110) set by get_session()
+        session.headers.update({"X-SAP-Client": "100"})
+
+        response_class = session.get(url_class, timeout=30)
+        response_class.raise_for_status()
+        json_classes = response_class.json()
+
+        response_fm = session.get(url_fm, timeout=30)
+        response_fm.raise_for_status()
+        json_fms = response_fm.json()
+
+        logger.info(f"Classes keys: {list(json_classes.keys()) if isinstance(json_classes, dict) else 'list'}")
+        logger.info(f"FMs keys:     {list(json_fms.keys()) if isinstance(json_fms, dict) else 'list'}")
+
+        top_methods = retrieve_top_methods(json_classes, json_fms, question or "", top_k=5)
+
+        if not top_methods:
+            return {"error": "No relevant reusable artifacts found for your question."}
+
+        rag_context = "\n\n".join(
+            f"[Match {i+1}]\n{m['text']}" for i, m in enumerate(top_methods)
+        )
+
+        prompt = f"""You are an expert SAP ABAP developer helping find a pre-approved reusable artifact.
+
+Developer's need: "{question}"
+
+Relevant catalog entries (ranked by relevance):
+{rag_context}
+
+Respond in this EXACT short format. Keep the entire response under 250 words (excluding code).
+Do NOT use markdown pipe tables (no | col | format). Use bullet points for lists.
+
+## Best Match
+- **Name:** <exact class or FM name>
+- **Type:** Class / Function Module
+- **Method / Entry Point:** <method or FM name>
+- **Purpose:** One sentence.
+- **Why it fits:** One sentence explaining how it solves the need.
+
+## Ready-to-Use Code
+```abap
+" Complete working snippet — copy and paste into your ABAP code
+```
+
+## Notes
+- Key parameter, prerequisite, or exception to handle (max 3 bullet points)
+
+If no artifact matches, say so clearly in one sentence. Be direct and practical."""
+
         return {"response": prompt}
 
     except Exception as e:
-        logger.error(f"Error in shell_abap_artifacts: {str(e)}")
+        logger.error(f"Error in GetReusableAbapArtifacts: {str(e)}")
         return {"error": str(e)}
     
-@mcp.tool()
-def getBapiOrStandardFmOrBTEOrFmExit(
-    question: Optional[str]
-) -> dict:
-    """
-    Fetches the list of BAPIs and standard Function Modules from the SAP system,
-    then uses LlamaIndex keyword-based retrieval (no vector embeddings) to return
-    only the entries most relevant to the user's question.
-    """
-    try:
-        url_bapi = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Bapi?sap-client=110"
-        truststore.inject_into_ssl()
-        session = requests.Session()
-        session.auth = HttpNegotiateAuth()
-        response = session.get(url_bapi, timeout=15)
-        response.raise_for_status()
+# @mcp.tool()
+# def getBapiOrStandardFmOrBTEOrFmExit(
+#     question: Optional[str]
+# ) -> dict:
+#     """
+#     Fetches the list of BAPIs and standard Function Modules from the SAP system,
+#     then uses LlamaIndex keyword-based retrieval (no vector embeddings) to return
+#     only the entries most relevant to the user's question.
+#     """
+#     try:
+#         url_bapi = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Bapi?sap-client=110"
+#         truststore.inject_into_ssl()
+#         session = requests.Session()
+#         session.auth = HttpNegotiateAuth()
+#         response = session.get(url_bapi, timeout=15)
+#         response.raise_for_status()
 
-        json_data = response.json()
-        logger.info(
-            f"Received BAPI response with keys: "
-            f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
-        )
+#         json_data = response.json()
+#         logger.info(
+#             f"Received BAPI response with keys: "
+#             f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
+#         )
 
-        data_text = format_abap_artifacts_to_text(json_data)
-        if data_text == "No data available":
-            return {"error": "No BAPI artifacts found in response"}
+#         data_text = format_abap_artifacts_to_text(json_data)
+#         if data_text == "No data available":
+#             return {"error": "No BAPI artifacts found in response"}
 
-        # Disable the LLM — we only need retrieval, not synthesis
-        Settings.llm = None
-        Settings.embed_model = None  # KeywordTableIndex does not use embeddings
+#         # Disable the LLM — we only need retrieval, not synthesis
+#         Settings.llm = None
+#         Settings.embed_model = None  # KeywordTableIndex does not use embeddings
 
-        # Build an in-memory keyword index from the artifact text
-        documents = [Document(text=data_text)]
-        index = KeywordTableIndex.from_documents(
-            documents,
-            max_keywords_per_chunk=20,
-        )
+#         # Build an in-memory keyword index from the artifact text
+#         documents = [Document(text=data_text)]
+#         index = KeywordTableIndex.from_documents(
+#             documents,
+#             max_keywords_per_chunk=20,
+#         )
 
-        # Retrieve the most relevant chunks for the question
-        retriever = index.as_retriever(retriever_mode="simple")
-        nodes = retriever.retrieve(question or "")
+#         # Retrieve the most relevant chunks for the question
+#         retriever = index.as_retriever(retriever_mode="simple")
+#         nodes = retriever.retrieve(question or "")
 
-        if not nodes:
-            # Fallback: return all data when no keyword matches are found
-            logger.warning("No keyword matches found — returning full artifact list.")
-            return {"response": data_text}
+#         if not nodes:
+#             # Fallback: return all data when no keyword matches are found
+#             logger.warning("No keyword matches found — returning full artifact list.")
+#             return {"response": data_text}
 
-        context = "\n\n".join(node.get_content() for node in nodes)
-        logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
-        return {"response": context}
+#         context = "\n\n".join(node.get_content() for node in nodes)
+#         logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
+#         return {"response": context}
 
-    except Exception as e:
-        logger.error(f"Error in getBapiAndStandardFm: {str(e)}")
-        return {"error": str(e)}
+#     except Exception as e:
+#         logger.error(f"Error in getBapiAndStandardFm: {str(e)}")
+#         return {"error": str(e)}
     
-@mcp.tool()
-def getStandardClass(
-    question: Optional[str]
-) -> dict:
+# @mcp.tool()
+# def getStandardClass(
+#     question: Optional[str]
+# ) -> dict:
  
-    try:
-        url_standard_class = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Standard_Class?sap-client=110"
-        truststore.inject_into_ssl()
-        session = requests.Session()
-        session.auth = HttpNegotiateAuth()
-        response = session.get(url_standard_class, timeout=15)
-        response.raise_for_status()
+#     try:
+#         url_standard_class = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Standard_Class?sap-client=110"
+#         truststore.inject_into_ssl()
+#         session = requests.Session()
+#         session.auth = HttpNegotiateAuth()
+#         response = session.get(url_standard_class, timeout=15)
+#         response.raise_for_status()
 
-        json_data = response.json()
-        logger.info(
-            f"Received Standard Class response with keys: "
-            f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
-        )
+#         json_data = response.json()
+#         logger.info(
+#             f"Received Standard Class response with keys: "
+#             f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
+#         )
 
-        data_text = format_abap_artifacts_to_text(json_data)
-        if data_text == "No data available":
-            return {"error": "No Standard Class artifacts found in response"}
+#         data_text = format_abap_artifacts_to_text(json_data)
+#         if data_text == "No data available":
+#             return {"error": "No Standard Class artifacts found in response"}
 
-        # Disable the LLM — we only need retrieval, not synthesis
-        Settings.llm = None
-        Settings.embed_model = None  # KeywordTableIndex does not use embeddings
+#         # Disable the LLM — we only need retrieval, not synthesis
+#         Settings.llm = None
+#         Settings.embed_model = None  # KeywordTableIndex does not use embeddings
 
-        # Build an in-memory keyword index from the artifact text
-        documents = [Document(text=data_text)]
-        index = KeywordTableIndex.from_documents(
-            documents,
-            max_keywords_per_chunk=20,
-        )
+#         # Build an in-memory keyword index from the artifact text
+#         documents = [Document(text=data_text)]
+#         index = KeywordTableIndex.from_documents(
+#             documents,
+#             max_keywords_per_chunk=20,
+#         )
 
-        # Retrieve the most relevant chunks for the question
-        retriever = index.as_retriever(retriever_mode="simple")
-        nodes = retriever.retrieve(question or "")
+#         # Retrieve the most relevant chunks for the question
+#         retriever = index.as_retriever(retriever_mode="simple")
+#         nodes = retriever.retrieve(question or "")
 
-        if not nodes:
-            # Fallback: return all data when no keyword matches are found
-            logger.warning("No keyword matches found — returning full artifact list.")
-            return {"response": data_text}
+#         if not nodes:
+#             # Fallback: return all data when no keyword matches are found
+#             logger.warning("No keyword matches found — returning full artifact list.")
+#             return {"response": data_text}
 
-        context = "\n\n".join(node.get_content() for node in nodes)
-        logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
-        return {"response": context}
-    except Exception as e:
-        logger.error(f"Error in getStandardClass: {str(e)}")
-        return {"error": str(e)}
+#         context = "\n\n".join(node.get_content() for node in nodes)
+#         logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
+#         return {"response": context}
+#     except Exception as e:
+#         logger.error(f"Error in getStandardClass: {str(e)}")
+#         return {"error": str(e)}
 
-@mcp.tool()
-def getBADI(
-    question: Optional[str]
-) -> dict:
-    try:
-        url_badi = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Badi?sap-client=110"
-        truststore.inject_into_ssl()
-        session = requests.Session()
-        session.auth = HttpNegotiateAuth()
-        response = session.get(url_badi, timeout=15)
-        response.raise_for_status()
+# @mcp.tool()
+# def getBADI(
+#     question: Optional[str]
+# ) -> dict:
+#     try:
+#         url_badi = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Badi?sap-client=110"
+#         truststore.inject_into_ssl()
+#         session = requests.Session()
+#         session.auth = HttpNegotiateAuth()
+#         response = session.get(url_badi, timeout=15)
+#         response.raise_for_status()
 
-        json_data = response.json()
-        logger.info(
-            f"Received BADI response with keys: "
-            f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
-        )
+#         json_data = response.json()
+#         logger.info(
+#             f"Received BADI response with keys: "
+#             f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
+#         )
 
-        data_text = format_abap_artifacts_to_text(json_data)
-        if data_text == "No data available":
-            return {"error": "No BADI artifacts found in response"}
+#         data_text = format_abap_artifacts_to_text(json_data)
+#         if data_text == "No data available":
+#             return {"error": "No BADI artifacts found in response"}
 
-        # Disable the LLM — we only need retrieval, not synthesis
-        Settings.llm = None
-        Settings.embed_model = None  # KeywordTableIndex does not use embeddings
+#         # Disable the LLM — we only need retrieval, not synthesis
+#         Settings.llm = None
+#         Settings.embed_model = None  # KeywordTableIndex does not use embeddings
 
-        # Build an in-memory keyword index from the artifact text
-        documents = [Document(text=data_text)]
-        index = KeywordTableIndex.from_documents(
-            documents,
-            max_keywords_per_chunk=20,
-        )
+#         # Build an in-memory keyword index from the artifact text
+#         documents = [Document(text=data_text)]
+#         index = KeywordTableIndex.from_documents(
+#             documents,
+#             max_keywords_per_chunk=20,
+#         )
 
-        # Retrieve the most relevant chunks for the question
-        retriever = index.as_retriever(retriever_mode="simple")
-        nodes = retriever.retrieve(question or "")
+#         # Retrieve the most relevant chunks for the question
+#         retriever = index.as_retriever(retriever_mode="simple")
+#         nodes = retriever.retrieve(question or "")
 
-        if not nodes:
-            # Fallback: return all data when no keyword matches are found
-            logger.warning("No keyword matches found — returning full artifact list.")
-            return {"response": data_text}
+#         if not nodes:
+#             # Fallback: return all data when no keyword matches are found
+#             logger.warning("No keyword matches found — returning full artifact list.")
+#             return {"response": data_text}
 
-        context = "\n\n".join(node.get_content() for node in nodes)
-        logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
-        return {"response": context}
+#         context = "\n\n".join(node.get_content() for node in nodes)
+#         logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
+#         return {"response": context}
 
-    except Exception as e:
-        logger.error(f"Error in getBADI: {str(e)}")
-        return {"error": str(e)}
+#     except Exception as e:
+#         logger.error(f"Error in getBADI: {str(e)}")
+#         return {"error": str(e)}
 
 
-@mcp.tool()
-def getStandardOdata(
-    question: Optional[str]
-) -> dict:
-    try:
-        url_odata = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Odata?sap-client=110"
-        truststore.inject_into_ssl()
-        session = requests.Session()
-        session.auth = HttpNegotiateAuth()
-        response = session.get(url_odata, timeout=15)
-        response.raise_for_status()
+# @mcp.tool()
+# def getStandardOdata(
+#     question: Optional[str]
+# ) -> dict:
+#     try:
+#         url_odata = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/Odata?sap-client=110"
+#         truststore.inject_into_ssl()
+#         session = requests.Session()
+#         session.auth = HttpNegotiateAuth()
+#         response = session.get(url_odata, timeout=15)
+#         response.raise_for_status()
 
-        json_data = response.json()
-        logger.info(
-            f"Received OData response with keys: "
-            f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
-        )
+#         json_data = response.json()
+#         logger.info(
+#             f"Received OData response with keys: "
+#             f"{list(json_data.keys()) if isinstance(json_data, dict) else 'List response'}"
+#         )
 
-        data_text = format_abap_artifacts_to_text(json_data)
-        if data_text == "No data available":
-            return {"error": "No OData artifacts found in response"}
+#         data_text = format_abap_artifacts_to_text(json_data)
+#         if data_text == "No data available":
+#             return {"error": "No OData artifacts found in response"}
 
-        # Disable the LLM — we only need retrieval, not synthesis
-        Settings.llm = None
-        Settings.embed_model = None  # KeywordTableIndex does not use embeddings
+#         # Disable the LLM — we only need retrieval, not synthesis
+#         Settings.llm = None
+#         Settings.embed_model = None  # KeywordTableIndex does not use embeddings
 
-        # Build an in-memory keyword index from the artifact text
-        documents = [Document(text=data_text)]
-        index = KeywordTableIndex.from_documents(
-            documents,
-            max_keywords_per_chunk=20,
-        )
+#         # Build an in-memory keyword index from the artifact text
+#         documents = [Document(text=data_text)]
+#         index = KeywordTableIndex.from_documents(
+#             documents,
+#             max_keywords_per_chunk=20,
+#         )
 
-        # Retrieve the most relevant chunks for the question
-        retriever = index.as_retriever(retriever_mode="simple")
-        nodes = retriever.retrieve(question or "")
+#         # Retrieve the most relevant chunks for the question
+#         retriever = index.as_retriever(retriever_mode="simple")
+#         nodes = retriever.retrieve(question or "")
 
-        if not nodes:
-            # Fallback: return all data when no keyword matches are found
-            logger.warning("No keyword matches found — returning full artifact list.")
-            return {"response": data_text}
+#         if not nodes:
+#             # Fallback: return all data when no keyword matches are found
+#             logger.warning("No keyword matches found — returning full artifact list.")
+#             return {"response": data_text}
 
-        context = "\n\n".join(node.get_content() for node in nodes)
-        logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
-        return {"response": context}
+#         context = "\n\n".join(node.get_content() for node in nodes)
+#         logger.info(f"Retrieved {len(nodes)} relevant chunk(s) for question: {question}")
+#         return {"response": context}
 
-    except Exception as e:
-        logger.error(f"Error in getStandardOdata: {str(e)}")
-        return {"error": str(e)}
+#     except Exception as e:
+#         logger.error(f"Error in getStandardOdata: {str(e)}")
+#         return {"error": str(e)}
     
 _SYSTEM_URL_MAP = {
     "D59": SAP_URL_D59,
@@ -850,7 +862,7 @@ def getWhereUsedList(
 ):
     encoded_name = quote(object_name, safe="")
     encoded_type = quote(object_type, safe="")
-    url_whereused = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/WhereUsed(p_objtype='{encoded_type}',p_objname='{encoded_name}')/Set?sap-client=110"
+    url_whereused = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/WhereUsed(p_objtype='{encoded_type}',p_objname='{encoded_name}')/Set?sap-client=100"
     truststore.inject_into_ssl()
     session = requests.Session()
     session.auth = HttpNegotiateAuth()
@@ -874,7 +886,7 @@ def getTrSeqAnalysis(
     tr_number: str,
     destination_sysid: str
 ):
-    url_trdep = f"{SAP_URL_D59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/TR_DEP(p_tr_number='{tr_number}',p_dest_sysid='{destination_sysid}')/Set"
+    url_trdep = f"{SAP_URL_S59}/sap/opu/odata4/shl/api_re_artifacts/srvd_a2x/shl/api_re_artifacts/0001/TR_DEP(p_tr_number='{tr_number}',p_dest_sysid='{destination_sysid}')/Set"
     truststore.inject_into_ssl()
     session = requests.Session()
     session.auth = HttpNegotiateAuth()
